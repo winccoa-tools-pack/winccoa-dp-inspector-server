@@ -1,0 +1,23 @@
+{
+  "name": "winccoa-dp-inspector-server",
+  "version": "0.1.0",
+  "description": "WebSocket server for the WinCC OA DP Inspector VS Code extension. Runs as a WinCC OA JavaScript Manager.",
+  "license": "MIT",
+  "main": "dist/index.js",
+  "scripts": {
+    "build": "tsc -p tsconfig.json",
+    "dev": "tsx watch src/index.ts",
+    "start": "node dist/index.js",
+    "start:mock": "DP_INSPECTOR_USE_MOCK=true node dist/index.js",
+    "dev:mock": "DP_INSPECTOR_USE_MOCK=true tsx watch src/index.ts"
+  },
+  "dependencies": {
+    "ws": "^8.18.0"
+  },
+  "devDependencies": {
+    "@types/node": "^20.17.0",
+    "@types/ws": "^8.5.14",
+    "tsx": "^4.19.3",
+    "typescript": "^5.7.3"
+  }
+}

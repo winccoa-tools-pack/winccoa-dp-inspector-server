@@ -18,7 +18,8 @@ function log(level: LogLevel, component: string, message: string, error?: Error)
 }
 
 export const logger = {
-  debug: (component: string, message: string) => log('DEBUG', component, message),
+  // eslint-disable-next-line @typescript-eslint/no-unused-vars
+  debug: (_component: string, _message: string) => { /* no-op: debug logging disabled */ },
   info:  (component: string, message: string) => log('INFO',  component, message),
   warn:  (component: string, message: string) => log('WARN',  component, message),
   error: (component: string, message: string, err?: Error) => log('ERROR', component, message, err),

@@ -32,10 +32,7 @@ export class SubscriptionManager {
    * For each DP, calls adapter.connect() and routes updates to sendFn.
    */
   subscribe(clientId: string, subscriptionId: string, dps: string[], sendFn: SendFn): void {
-    logger.info(
-      'SubscriptionManager',
-      `subscribe: client=${clientId} sub=${subscriptionId} dps=[${dps.join(', ')}]`,
-    );
+    // logger.info('SubscriptionManager', `subscribe: client=${clientId} sub=${subscriptionId} dps=[${dps.join(', ')}]`);
 
     const existing = this._sessions.get(clientId) ?? [];
 
@@ -55,10 +52,7 @@ export class SubscriptionManager {
    * Cancel all DP connections belonging to the given subscriptionId for a client.
    */
   unsubscribe(clientId: string, subscriptionId: string): void {
-    logger.info(
-      'SubscriptionManager',
-      `unsubscribe: client=${clientId} sub=${subscriptionId}`,
-    );
+    // logger.info('SubscriptionManager', `unsubscribe: client=${clientId} sub=${subscriptionId}`);
 
     const entries = this._sessions.get(clientId);
     if (!entries) return;

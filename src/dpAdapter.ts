@@ -177,62 +177,124 @@ export class MockDpAdapter implements IDpAdapter {
 // ─── WinCC OA Runtime Adapter ─────────────────────────────────────────────────
 
 /**
- * Production adapter that delegates to the WinCC OA JS API.
+ * Maps a WinccoaElementType numeric value to our DpSearchEntry type string.
+ * WinccoaElementType enum values are loaded from winccoa-manager at runtime.
+ */
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+function mapElementType(elemType: number, WinccoaElementType: any): DpSearchEntry['type'] {
+  if (elemType === WinccoaElementType.Float)  return 'float';
+  if (elemType === WinccoaElementType.Int)    return 'int';
+  if (elemType === WinccoaElementType.UInt)   return 'int';
+  if (elemType === WinccoaElementType.Bool)   return 'bool';
+  if (elemType === WinccoaElementType.Bit)    return 'bool';
+  return 'float';
+}
+
+/**
+ * Production adapter using the official WinCC OA JavaScript Manager API.
  *
- * The WinCC OA JavaScript Manager injects the following global functions at
- * runtime into the Node.js context:
- *   - `dpConnect(dp, callback)`
- *   - `dpDisconnect(dp, callback)`
- *   - `dpQuery(pattern)` — returns an array of DP names
+ * Uses `require('winccoa-manager')` so that the WinCC OA runtime can resolve
+ * the native AddOn from the project/installation paths at startup.
  *
- * These are NOT available at development time; they are referenced as
- * `(globalThis as any).dpConnect(...)` to avoid TypeScript errors.
+ * Key API differences from plain CTL globals:
+ *   - `winccoa.dpConnect(callback, dpeNames, answer)` → returns numeric ID
+ *   - `winccoa.dpDisconnect(id)`         → takes numeric ID, not dp+callback
+ *   - `winccoa.dpNames(pattern)`         → returns string[] of DPE names
+ *   - `winccoa.dpElementType(name)`      → returns WinccoaElementType enum value
  *
- * See WinCC OA documentation: "JavaScript Manager API Reference"
+ * Docs: https://www.winccoa.com/documentation/WinCCOA/latest/en_US/apis/winccoa-manager/2.2.6/classes/WinccoaManager.html
  */
 export class WinCCOaDpAdapter implements IDpAdapter {
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  private _winccoa: any = null;
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  private _WinccoaElementType: any = null;
+
+  /** Lazy-init the WinccoaManager instance. */
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  private get winccoa(): any {
+    if (!this._winccoa) {
+      // eslint-disable-next-line @typescript-eslint/no-var-requires
+      const mod = require('winccoa-manager') as { WinccoaManager: new () => unknown; WinccoaElementType: unknown };
+      this._WinccoaElementType = mod.WinccoaElementType;
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      this._winccoa = new (mod.WinccoaManager as any)();
+    }
+    return this._winccoa;
+  }
+
+  /** Maps original DpValueCallback → numeric dpConnect ID for dpDisconnect. */
+  private readonly _connIds = new Map<DpValueCallback, number>();
+
   connect(dp: string, cb: DpValueCallback): void {
-    // The WinCC OA callback receives (dpName, value, timestamp, quality).
-    // We adapt the signature to match DpValueCallback.
-    const adapter = (dpName: string, value: unknown, ts: unknown, quality: unknown) => {
-      const tsMs = typeof ts === 'number' ? ts * 1000 : Date.now();
-      const q: 'good' | 'bad' | 'uncertain' =
-        quality === 0 ? 'good' : quality === 1 ? 'bad' : 'uncertain';
-      cb(dpName, value as number | boolean | string | null, tsMs, q);
-    };
-
-    // Store the adapted callback so we can pass the same reference to dpDisconnect
-    WinCCOaDpAdapter._adapters.set(cb, adapter);
-
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    (globalThis as any).dpConnect(dp, adapter);
-    logger.debug('WinCCOaDpAdapter', `dpConnect: ${dp}`);
+    // dpConnect(callback, dpeNames, answer=true)
+    // Callback receives: (names: string[], values: unknown[], type, error?)
+    const id: number = this.winccoa.dpConnect(
+      (names: string[], values: unknown[], type: unknown, error: unknown) => {
+        // Log every callback invocation unconditionally for diagnostics
+        logger.debug(
+          'WinCCOaDpAdapter',
+          `dpConnect CB fired: dp=${dp} type=${JSON.stringify(type)} error=${JSON.stringify(error)} names=${JSON.stringify(names)} values=${JSON.stringify(values)}`,
+        );
+        if (error !== null && error !== undefined) {
+          logger.error('WinCCOaDpAdapter', `dpConnect callback error for ${dp}: ${JSON.stringify(error)}`);
+          return;
+        }
+        if (!Array.isArray(names) || names.length === 0) {
+          logger.warn('WinCCOaDpAdapter', `dpConnect CB: empty names array for ${dp}`);
+          return;
+        }
+        // Use the original subscribed dp name (not the full attribute path like
+        // "System1:Sensor1.temperature:_online.._value" that WinCC OA returns),
+        // so the client can match the update to its subscription.
+        const value = (values[0] ?? null) as number | boolean | string | null;
+        cb(dp, value, Date.now(), 'good');
+      },
+      dp,
+      true, // answer: fire immediately with current value
+    );
+    this._connIds.set(cb, id);
+    logger.debug('WinCCOaDpAdapter', `dpConnect: ${dp} (id=${id})`);
   }
 
   disconnect(dp: string, cb: DpValueCallback): void {
-    const adapter = WinCCOaDpAdapter._adapters.get(cb);
-    if (!adapter) return;
-    WinCCOaDpAdapter._adapters.delete(cb);
-
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    (globalThis as any).dpDisconnect(dp, adapter);
-    logger.debug('WinCCOaDpAdapter', `dpDisconnect: ${dp}`);
+    const id = this._connIds.get(cb);
+    if (id === undefined) return;
+    this._connIds.delete(cb);
+    try {
+      this.winccoa.dpDisconnect(id);
+      logger.debug('WinCCOaDpAdapter', `dpDisconnect: ${dp} (id=${id})`);
+    } catch (err) {
+      logger.error('WinCCOaDpAdapter', `dpDisconnect failed for ${dp}: ${err}`);
+    }
   }
 
   query(pattern: string): Promise<DpSearchEntry[]> {
     return new Promise((resolve, reject) => {
       try {
-        // eslint-disable-next-line @typescript-eslint/no-explicit-any
-        const rawResults: string[] = (globalThis as any).dpQuery(pattern) ?? [];
-        const results: DpSearchEntry[] = rawResults.map((name) => ({ name, type: 'float' as const }));
-        logger.debug('WinCCOaDpAdapter', `dpQuery("${pattern}") → ${results.length} results`);
+        // Append '.*' to match elements when no element part is specified
+        const hasElementPart = pattern.includes('.');
+        const searchPattern = hasElementPart ? pattern : pattern + '.*';
+
+        const names: string[] = this.winccoa.dpNames(searchPattern) as string[];
+
+        const results: DpSearchEntry[] = names.map((name) => {
+          let type: DpSearchEntry['type'] = 'float';
+          try {
+            const elemType: number = this.winccoa.dpElementType(name) as number;
+            type = mapElementType(elemType, this._WinccoaElementType);
+          } catch {
+            // Unknown element type — fall back to float
+          }
+          return { name, type };
+        });
+
+        logger.debug('WinCCOaDpAdapter', `dpNames("${searchPattern}") → ${results.length} results`);
         resolve(results);
       } catch (err) {
+        logger.error('WinCCOaDpAdapter', `dpSearch failed: ${err}`);
         reject(err);
       }
     });
   }
-
-  // Maps original DpValueCallback → adapted WinCC OA callback, so disconnect can find it
-  private static readonly _adapters = new WeakMap<DpValueCallback, Function>();
 }

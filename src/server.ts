@@ -39,7 +39,7 @@ export function startServer(host: string, port: number, adapter: IDpAdapter): We
         return;
       }
 
-      logger.debug('Server', `[${clientId}] → ${JSON.stringify(msg)}`);
+      // logger.debug('Server', `[${clientId}] → ${JSON.stringify(msg)}`);
 
       switch (msg.type) {
         case 'subscribe': {

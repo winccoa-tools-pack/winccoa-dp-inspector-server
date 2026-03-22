@@ -5,12 +5,7 @@ import { logger } from './logger';
 
 const config = loadConfig();
 
-logger.info('Main', '═══════════════════════════════════════════════');
-logger.info('Main', '  WinCC OA DP Inspector Server — Starting');
-logger.info('Main', '═══════════════════════════════════════════════');
-logger.info('Main', `Host : ${config.host}`);
-logger.info('Main', `Port : ${config.port}`);
-logger.info('Main', `Mode : ${config.useMock ? 'MOCK (simulated data)' : 'WinCC OA runtime'}`);
+logger.info('Main', `WinCC OA DP Inspector Server started — ws://${config.host}:${config.port} (${config.useMock ? 'MOCK' : 'WinCC OA runtime'})`);
 
 const adapter = config.useMock ? new MockDpAdapter() : new WinCCOaDpAdapter();
 

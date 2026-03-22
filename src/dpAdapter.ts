@@ -140,7 +140,7 @@ export class MockDpAdapter implements IDpAdapter {
 
     existing.push({ dp, cb, intervalId });
     this._subs.set(dp, existing);
-    logger.debug('MockDpAdapter', `connect: ${dp} (${existing.length} listeners)`);
+    // logger.debug('MockDpAdapter', `connect: ${dp} (${existing.length} listeners)`);
   }
 
   disconnect(dp: string, cb: DpValueCallback): void {
@@ -158,7 +158,7 @@ export class MockDpAdapter implements IDpAdapter {
     } else {
       this._subs.set(dp, subs);
     }
-    logger.debug('MockDpAdapter', `disconnect: ${dp} (${subs.length} listeners remaining)`);
+    // logger.debug('MockDpAdapter', `disconnect: ${dp} (${subs.length} listeners remaining)`);
   }
 
   query(pattern: string): Promise<DpSearchEntry[]> {
@@ -169,7 +169,7 @@ export class MockDpAdapter implements IDpAdapter {
       .replace(/\?/g, '.');
     const re = new RegExp(`^${regexStr}`, 'i');
     const results = MOCK_DPS.filter((entry) => re.test(entry.name));
-    logger.debug('MockDpAdapter', `query("${pattern}") → ${results.length} results`);
+    // logger.debug('MockDpAdapter', `query("${pattern}") → ${results.length} results`);
     return Promise.resolve(results);
   }
 }
@@ -282,7 +282,7 @@ export class WinCCOaDpAdapter implements IDpAdapter {
           return { name, type };
         });
 
-        logger.debug('WinCCOaDpAdapter', `dpNames("${searchPattern}") → ${results.length} results`);
+        // logger.debug('WinCCOaDpAdapter', `dpNames("${searchPattern}") → ${results.length} results`);
         resolve(results);
       } catch (err) {
         logger.error('WinCCOaDpAdapter', `dpSearch failed: ${err}`);

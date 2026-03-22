@@ -56,11 +56,17 @@ export interface UpdateMsg {
   quality: 'good' | 'bad' | 'uncertain';
 }
 
+/** A single DP entry returned by dpSearch. */
+export interface DpSearchEntry {
+  name: string;
+  type: 'float' | 'int' | 'bool' | 'enum';
+}
+
 /** Result of a dpSearch query. */
 export interface DpSearchResultMsg {
   type: 'dpSearchResult';
   id: string;
-  dps: string[];
+  dps: DpSearchEntry[];
 }
 
 /** Error response for any message. */

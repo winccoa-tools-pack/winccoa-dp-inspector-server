@@ -1,4 +1,5 @@
 import { logger } from './logger';
+import type { DpSearchEntry } from './protocol';
 
 /** Callback called when a datapoint value changes. */
 export type DpValueCallback = (
@@ -30,26 +31,30 @@ export interface IDpAdapter {
    * Query datapoint names matching a wildcard pattern.
    * @param pattern e.g. "System1:Pump*"
    */
-  query(pattern: string): Promise<string[]>;
+  query(pattern: string): Promise<DpSearchEntry[]>;
 }
 
 // ─── Mock Adapter ─────────────────────────────────────────────────────────────
 
 /** Simulated DP catalogue for local development. */
-const MOCK_DPS = [
-  'System1:Pump1.value',
-  'System1:Pump2.value',
-  'System1:Tank1.level',
-  'System1:Tank2.level',
-  'System1:Valve1.position',
-  'System1:Valve2.position',
-  'System1:Sensor_Temp1.value',
-  'System1:Sensor_Temp2.value',
-  'System1:Sensor_Press1.value',
-  'System1:Motor1.speed',
-  'System1:Motor2.speed',
-  'System1:Flow1.rate',
-  'System1:Flow2.rate',
+const MOCK_DPS: DpSearchEntry[] = [
+  { name: 'System1:Pump1.pressure',   type: 'float' },
+  { name: 'System1:Pump1.running',    type: 'bool'  },
+  { name: 'System1:Pump1.state',      type: 'enum'  },
+  { name: 'System1:Pump2.pressure',   type: 'float' },
+  { name: 'System1:Pump2.running',    type: 'bool'  },
+  { name: 'System1:Tank1.level',      type: 'float' },
+  { name: 'System1:Tank2.level',      type: 'float' },
+  { name: 'System1:Valve1.position',  type: 'float' },
+  { name: 'System1:Valve2.position',  type: 'float' },
+  { name: 'System1:Valve3.mode',      type: 'enum'  },
+  { name: 'System1:Sensor_Temp1.value', type: 'float' },
+  { name: 'System1:Sensor_Temp2.value', type: 'float' },
+  { name: 'System1:Sensor_Press1.value', type: 'float' },
+  { name: 'System1:Motor1.speed',     type: 'float' },
+  { name: 'System1:Motor2.speed',     type: 'float' },
+  { name: 'System1:Flow1.rate',       type: 'float' },
+  { name: 'System1:Flow2.rate',       type: 'float' },
 ];
 
 interface MockSubscription {
@@ -104,14 +109,14 @@ export class MockDpAdapter implements IDpAdapter {
     logger.debug('MockDpAdapter', `disconnect: ${dp} (${subs.length} listeners remaining)`);
   }
 
-  query(pattern: string): Promise<string[]> {
+  query(pattern: string): Promise<DpSearchEntry[]> {
     // Convert WinCC OA wildcard pattern (System1:Pump*) to a RegExp
     const regexStr = pattern
       .replace(/[.+^${}()|[\]\\]/g, '\\$&') // escape regex meta (except * ?)
       .replace(/\*/g, '.*')
       .replace(/\?/g, '.');
     const re = new RegExp(`^${regexStr}`, 'i');
-    const results = MOCK_DPS.filter((dp) => re.test(dp));
+    const results = MOCK_DPS.filter((entry) => re.test(entry.name));
     logger.debug('MockDpAdapter', `query("${pattern}") → ${results.length} results`);
     return Promise.resolve(results);
   }
@@ -162,11 +167,12 @@ export class WinCCOaDpAdapter implements IDpAdapter {
     logger.debug('WinCCOaDpAdapter', `dpDisconnect: ${dp}`);
   }
 
-  query(pattern: string): Promise<string[]> {
+  query(pattern: string): Promise<DpSearchEntry[]> {
     return new Promise((resolve, reject) => {
       try {
         // eslint-disable-next-line @typescript-eslint/no-explicit-any
-        const results: string[] = (globalThis as any).dpQuery(pattern) ?? [];
+        const rawResults: string[] = (globalThis as any).dpQuery(pattern) ?? [];
+        const results: DpSearchEntry[] = rawResults.map((name) => ({ name, type: 'float' as const }));
         logger.debug('WinCCOaDpAdapter', `dpQuery("${pattern}") → ${results.length} results`);
         resolve(results);
       } catch (err) {

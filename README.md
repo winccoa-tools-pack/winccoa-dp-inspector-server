@@ -58,17 +58,42 @@ npm run build
 # Output: dist/index.js
 ```
 
+## Installation
+
+### Automatic (recommended)
+
+Use the **WinCC OA DP Inspector** VS Code extension. It handles cloning, building, and
+registering the manager via PMON in one step:
+
+1. Open your WinCC OA project in VS Code
+2. Run **`WinCC OA: DP Inspector - Setup Server`** from the Command Palette
+3. The extension clones this repo into `<project>/javascript/dpInspectorServer/`, builds it,
+   and registers the Node.js manager via PMON
+
+See [vscode-winccoa-dp-inspector](https://github.com/winccoa-tools-pack/vscode-winccoa-dp-inspector) for details.
+
+### Manual
+
+```bash
+# Inside your WinCC OA project directory:
+git clone https://github.com/winccoa-tools-pack/winccoa-dp-inspector-server javascript/dpInspectorServer
+cd javascript/dpInspectorServer
+npm ci
+npm run build
+```
+
+Then add a JavaScript Manager entry in your WinCC OA project configuration (`config/progs`):
+
+```
+node -num <N> manual 1 1 2 2 dpInspectorServer/dist/index.js
+```
+
+> WinCC OA automatically prepends `<project>/javascript/` to the script path.
+
 ## Deploying as a WinCC OA JavaScript Manager
 
-1. Copy the compiled `dist/` folder and `node_modules/` into your WinCC OA project's
-   `scripts/libs/` or a dedicated subfolder.
-2. In the WinCC OA Console, add a new **JavaScript Manager** pointing to `dist/index.js`.
-3. Configure the port via the `DP_INSPECTOR_PORT` environment variable or accept the
-   default `4712`.
-4. Start the manager — it reads live DP values via `dpConnect` / `dpQuery` which are
-   injected as globals by the WinCC OA runtime.
+The server uses the `winccoa-manager` Node.js package which wraps the WinCC OA runtime API
+(`dpConnect`, `dpDisconnect`, `dpNames`, `dpElementType`). These APIs are only available
+when the process is launched by the WinCC OA runtime.
 
-> **Note:** The `WinCCOaDpAdapter` (used in production) references `globalThis.dpConnect`,
-> `globalThis.dpDisconnect`, and `globalThis.dpQuery` — these are not standard Node.js APIs.
-> They are only available when the process is launched by the WinCC OA runtime. Use the
-> mock adapter (`DP_INSPECTOR_USE_MOCK=true`) for local development.
+Use `DP_INSPECTOR_USE_MOCK=true` for local development without a running WinCC OA instance.

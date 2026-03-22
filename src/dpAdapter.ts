@@ -230,12 +230,7 @@ export class WinCCOaDpAdapter implements IDpAdapter {
     // dpConnect(callback, dpeNames, answer=true)
     // Callback receives: (names: string[], values: unknown[], type, error?)
     const id: number = this.winccoa.dpConnect(
-      (names: string[], values: unknown[], type: unknown, error: unknown) => {
-        // Log every callback invocation unconditionally for diagnostics
-        logger.debug(
-          'WinCCOaDpAdapter',
-          `dpConnect CB fired: dp=${dp} type=${JSON.stringify(type)} error=${JSON.stringify(error)} names=${JSON.stringify(names)} values=${JSON.stringify(values)}`,
-        );
+      (names: string[], values: unknown[], _type: unknown, error: unknown) => {
         if (error !== null && error !== undefined) {
           logger.error('WinCCOaDpAdapter', `dpConnect callback error for ${dp}: ${JSON.stringify(error)}`);
           return;
@@ -254,7 +249,6 @@ export class WinCCOaDpAdapter implements IDpAdapter {
       true, // answer: fire immediately with current value
     );
     this._connIds.set(cb, id);
-    logger.debug('WinCCOaDpAdapter', `dpConnect: ${dp} (id=${id})`);
   }
 
   disconnect(dp: string, cb: DpValueCallback): void {
@@ -263,7 +257,6 @@ export class WinCCOaDpAdapter implements IDpAdapter {
     this._connIds.delete(cb);
     try {
       this.winccoa.dpDisconnect(id);
-      logger.debug('WinCCOaDpAdapter', `dpDisconnect: ${dp} (id=${id})`);
     } catch (err) {
       logger.error('WinCCOaDpAdapter', `dpDisconnect failed for ${dp}: ${err}`);
     }

@@ -57,36 +57,88 @@ const MOCK_DPS: DpSearchEntry[] = [
   { name: 'System1:Flow2.rate',       type: 'float' },
 ];
 
+// ─── Signal generators ────────────────────────────────────────────────────────
+
+type SignalFn = (t: number) => number | boolean;
+
+/** t = elapsed seconds since subscription start */
+const SIGNAL_MAP: Record<string, SignalFn> = {
+  // Sinus signals — pressure/flow
+  'Pump1.pressure':          (t) => parseFloat((60 + 40 * Math.sin(2 * Math.PI * t / 60)).toFixed(2)),
+  'Pump2.pressure':          (t) => parseFloat((55 + 35 * Math.sin(2 * Math.PI * t / 45 + 1)).toFixed(2)),
+  'Sensor_Press1.value':     (t) => parseFloat((5 + 3 * Math.sin(2 * Math.PI * t / 30 + 0.5)).toFixed(3)),
+  'Flow1.rate':              (t) => parseFloat((200 + 80 * Math.sin(2 * Math.PI * t / 50)).toFixed(1)),
+  'Flow2.rate':              (t) => parseFloat((150 + 60 * Math.sin(2 * Math.PI * t / 70 + 2)).toFixed(1)),
+
+  // Large range — Motor speed 0-3000 RPM (for dual-axis test)
+  'Motor1.speed':            (t) => parseFloat((1500 + 1200 * Math.sin(2 * Math.PI * t / 80)).toFixed(0)),
+  'Motor2.speed':            (t) => parseFloat((1800 + 900 * Math.sin(2 * Math.PI * t / 55 + 0.8)).toFixed(0)),
+
+  // Small range — Temperature 18-26°C (for dual-axis test with Motor)
+  'Sensor_Temp1.value':      (t) => parseFloat((22 + 3 * Math.sin(2 * Math.PI * t / 120)).toFixed(2)),
+  'Sensor_Temp2.value':      (t) => parseFloat((19 + 2.5 * Math.cos(2 * Math.PI * t / 90)).toFixed(2)),
+
+  // Sawtooth/ramp 0→100 over 60s
+  'Tank1.level':             (t) => parseFloat(((t % 60) / 60 * 100).toFixed(1)),
+  'Tank2.level':             (t) => parseFloat((100 - (t % 60) / 60 * 100).toFixed(1)),  // falling ramp
+
+  // Valve position — slower ramp 0→100 over 30s, back
+  'Valve1.position':         (t) => {
+    const phase = (t % 30) / 30;
+    return parseFloat((phase < 0.5 ? phase * 2 * 100 : (1 - phase) * 2 * 100).toFixed(1));
+  },
+  'Valve2.position':         (t) => parseFloat(((t % 30) / 30 * 100).toFixed(1)),
+
+  // Bool toggles every 5s
+  'Pump1.running':           (t) => Math.floor(t / 5) % 2 === 0,
+  'Pump2.running':           (t) => Math.floor(t / 7) % 2 === 0,
+
+  // Enum stepping 0→1→2→0 every 8s
+  'Pump1.state':             (t) => Math.floor(t / 8) % 3,
+  'Valve3.mode':             (t) => Math.floor(t / 6) % 3,
+};
+
+function getSignalFn(dp: string): SignalFn {
+  // Match by the element part (after last dot or colon)
+  const key = dp.includes(':') ? dp.split(':')[1] ?? dp : dp;
+  return SIGNAL_MAP[key] ?? ((t) => parseFloat((50 + 30 * Math.sin(2 * Math.PI * t / 40 + Math.random())).toFixed(2)));
+}
+
 interface MockSubscription {
   dp: string;
   cb: DpValueCallback;
   intervalId: ReturnType<typeof setInterval>;
-  currentValue: number;
 }
 
 /**
- * In-process mock adapter that produces random-walk values at ~1 s intervals.
- * Use this when `DP_INSPECTOR_USE_MOCK=true` or during automated tests.
+ * In-process mock adapter with realistic signal shapes:
+ * - Sinus for pressure/flow/temperature
+ * - Sawtooth/ramp for tank levels
+ * - Bool toggle for running states
+ * - Enum stepping for modes/states
+ * - Large-range motor speeds for dual-axis testing
  */
 export class MockDpAdapter implements IDpAdapter {
   private readonly _subs = new Map<string, MockSubscription[]>();
 
   connect(dp: string, cb: DpValueCallback): void {
     const existing = this._subs.get(dp) ?? [];
+    const signalFn = getSignalFn(dp);
+    const startMs = Date.now();
 
-    const startValue = 50 + Math.random() * 50;
-    let currentValue = startValue;
+    // Fire initial value immediately
+    setTimeout(() => {
+      const v = signalFn(0);
+      cb(dp, v, Date.now(), 'good');
+    }, 50);
 
     const intervalId = setInterval(() => {
-      // Random walk: ±5% of full scale (0-100)
-      currentValue = Math.max(0, Math.min(100, currentValue + (Math.random() - 0.5) * 5));
-      cb(dp, parseFloat(currentValue.toFixed(3)), Date.now(), 'good');
-    }, 1000);
+      const t = (Date.now() - startMs) / 1000; // elapsed seconds
+      const v = signalFn(t);
+      cb(dp, v, Date.now(), 'good');
+    }, 500); // 500ms for smoother sinus curves
 
-    // Fire with initial value immediately (async to avoid re-entrant issues)
-    setTimeout(() => cb(dp, parseFloat(startValue.toFixed(3)), Date.now(), 'good'), 50);
-
-    existing.push({ dp, cb, intervalId, currentValue });
+    existing.push({ dp, cb, intervalId });
     this._subs.set(dp, existing);
     logger.debug('MockDpAdapter', `connect: ${dp} (${existing.length} listeners)`);
   }
@@ -98,7 +150,7 @@ export class MockDpAdapter implements IDpAdapter {
     const idx = subs.findIndex((s) => s.cb === cb);
     if (idx === -1) return;
 
-    clearInterval(subs[idx].intervalId);
+    clearInterval(subs[idx]!.intervalId);
     subs.splice(idx, 1);
 
     if (subs.length === 0) {
